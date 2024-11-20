@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Общий график</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.2/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Общий график всех датчиков</h1>
+    <canvas id="overviewChart" width="800" height="400"></canvas>
+    <a href="{{ url_for('index') }}">На главную</a>
+
+    <script>
+        const socket = io.connect();
+
+        // Инициализация Chart.js
+        const ctx = document.getElementById('overviewChart').getContext('2d');
+        const overviewChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Временные метки
+                datasets: [] // Наборы данных для каждого датчика
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: { type: 'time', title: { display: true, text: 'Время' } },
+                    y: { title: { display: true, text: 'Значение' } }
+                }
+            }
+        });
+
+        // Обновление данных графика через Socket.IO
+        socket.emit('request_overview_data');
+
+        socket.on('overview_data', function (data) {
+            const datasets = [];
+            const timeLabels = [];
+
+            data.data.forEach(row => {
+                const sensorId = row.sensor_id;
+                const time = new Date(row.time);
+                const value = row.value;
+
+                let dataset = datasets.find(d => d.label === `Датчик ${sensorId}`);
+                if (!dataset) {
+                    dataset = {
+                        label: `Датчик ${sensorId}`,
+                        data: [],
+                        borderColor: `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 1)`,
+                        borderWidth: 2,
+                        fill: false
+                    };
+                    datasets.push(dataset);
+                }
+                dataset.data.push({ x: time, y: value });
+
+                if (!timeLabels.includes(time)) timeLabels.push(time);
+            });
+
+            overviewChart.data.labels = timeLabels.sort();
+            overviewChart.data.datasets = datasets;
+            overviewChart.update();
+        });
+    </script>
+</body>
+</html>
