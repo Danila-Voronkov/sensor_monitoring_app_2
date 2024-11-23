@@ -1,0 +1,139 @@
+<!-- sensor_chart.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>График датчика</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+    <h1>График датчика {{ sensor_type }}</h1>
+    <div>
+        <label><input type="radio" name="mode" value="last_minute" checked> За последнюю минуту</label>
+        <label><input type="radio" name="mode" value="custom_range"> Выбрать диапазон</label>
+    </div>
+    <div id="custom-range" style="display: none;">
+        <label>Начало: <input type="datetime-local" id="start-time"></label>
+        <label>Конец: <input type="datetime-local" id="end-time"></label>
+        <button id="apply-range">Применить</button>
+    </div>
+    <canvas id="sensorChart" width="800" height="400"></canvas>
+    <a href="{{ url_for('index') }}">На главную</a>
+
+    <script>
+        const sensorType = "{{ sensor_type }}";
+        const socket = io.connect();
+    
+        // Инициализация Chart.js
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Временные метки
+                datasets: [{
+                    label: `Датчик ${sensorType}`,
+                    data: [], // Значения датчика
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: { type: 'time', title: { display: true, text: 'Время' } },
+                    y: { title: { display: true, text: 'Значение' } }
+                }
+            }
+        });
+    
+        // Инициализация данных при загрузке страницы
+        socket.emit('request_chart_data', sensorType);
+    
+        socket.on('chart_data', function (data) {
+            if (data.sensor_type === parseInt(sensorType)) {
+                const timeData = data.data.map(item => new Date(item.time));
+                const valueData = data.data.map(item => item.value);
+                
+                sensorChart.data.labels = timeData;
+                sensorChart.data.datasets[0].data = valueData;
+                sensorChart.update();
+            }
+        });
+    
+        // Добавление новых данных в реальном времени
+        socket.on('update_data', function (data) {
+            if (data.averages && data.averages[sensorType] !== undefined) {
+                const now = new Date();
+                const avgValue = data.averages[sensorType];
+    
+                // Обновление данных для конкретного датчика
+                sensorChart.data.labels.push(now);
+                sensorChart.data.datasets[0].data.push({ x: now, y: avgValue });
+    
+                // Убедитесь, что график обновляется
+                sensorChart.update();
+            }
+        });
+
+        // socket.on('chart_data_range', function (data) {
+        //     if (data.sensor_type === parseInt(sensorType)) {
+        //         const timeData = data.data.map(item => new Date(item.time));
+        //         const valueData = data.data.map(item => item.value);
+
+        //         sensorChart.data.labels = timeData;
+        //         sensorChart.data.datasets[0].data = valueData;
+        //         sensorChart.update();
+        //     }
+        // });
+
+        socket.on('chart_data_range', function (data) {
+            if (data.sensor_type === sensorType) {
+                const timeData = data.data.map(item => new Date(item.time));
+                const valueData = data.data.map(item => item.value);
+
+                sensorChart.data.labels = timeData;
+                sensorChart.data.datasets[0].data = valueData;
+                sensorChart.update();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const modeInputs = document.getElementsByName('mode');
+            const customRangeDiv = document.getElementById('custom-range');
+            const startTimeInput = document.getElementById('start-time');
+            const endTimeInput = document.getElementById('end-time');
+            const applyRangeButton = document.getElementById('apply-range');
+
+            modeInputs.forEach(input => {
+                input.addEventListener('change', () => {
+                    if (input.value === 'custom_range') {
+                        customRangeDiv.style.display = 'block';
+                    } else {
+                        customRangeDiv.style.display = 'none';
+                        socket.emit('request_chart_data', sensorType); // Вернуться в режим за минуту
+                    }
+                });
+            });
+
+            applyRangeButton.addEventListener('click', () => {
+                const startTime = startTimeInput.value;
+                const endTime = endTimeInput.value;
+
+                if (!startTime || !endTime) {
+                    alert('Пожалуйста, выберите оба времени.');
+                    return;
+                }
+
+                socket.emit('request_chart_data_range', {
+                    sensor_type: sensorType,
+                    start_time: startTime,
+                    end_time: endTime
+                });
+            });
+        });
+    </script>
+</body>
+</html>

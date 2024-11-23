@@ -1,0 +1,166 @@
+<!-- overview.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Общий график</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+    <h1>Общий график всех датчиков</h1>
+    <div>
+        <label><input type="radio" name="mode" value="last_minute" checked> За последнюю минуту</label>
+        <label><input type="radio" name="mode" value="custom_range"> Выбрать диапазон</label>
+    </div>
+    <div id="custom-range" style="display: none;">
+        <label>Начало: <input type="datetime-local" id="start-time"></label>
+        <label>Конец: <input type="datetime-local" id="end-time"></label>
+        <button id="apply-range">Применить</button>
+    </div>
+    <canvas id="overviewChart" width="800" height="400"></canvas>
+    <a href="{{ url_for('index') }}">На главную</a>
+
+    <script>
+        const socket = io.connect();
+    
+        // Инициализация Chart.js
+        const ctx = document.getElementById('overviewChart').getContext('2d');
+        const overviewChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Временные метки
+                datasets: [] // Наборы данных для каждого датчика
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: { type: 'time', title: { display: true, text: 'Время' } },
+                    y: { title: { display: true, text: 'Значение' } }
+                }
+            }
+        });
+    
+        // Инициализация данных при загрузке страницы
+        socket.emit('request_overview_data');
+    
+        socket.on('overview_data', function (data) {
+            const datasets = [];
+            const timeLabels = [];
+    
+            data.data.forEach(row => {
+                const sensorId = row.sensor_id;
+                const time = new Date(row.time);
+                const value = row.value;
+    
+                let dataset = datasets.find(d => d.label === `Датчик ${sensorId}`);
+                if (!dataset) {
+                    dataset = {
+                        label: `Датчик ${sensorId}`,
+                        data: [],
+                        borderColor: `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 1)`,
+                        borderWidth: 2,
+                        fill: false
+                    };
+                    datasets.push(dataset);
+                }
+                dataset.data.push({ x: time, y: value });
+    
+                if (!timeLabels.includes(time)) timeLabels.push(time);
+            });
+    
+            overviewChart.data.labels = timeLabels.sort();
+            overviewChart.data.datasets = datasets;
+            overviewChart.update();
+        });
+    
+        // Добавление данных в реальном времени
+        socket.on('update_data', function (data) {
+            for (const [sensorId, avgValue] of Object.entries(data.averages)) {
+                let dataset = overviewChart.data.datasets.find(d => d.label === `Датчик ${sensorId}`);
+                const now = new Date();
+    
+                if (!dataset) {
+                    dataset = {
+                        label: `Датчик ${sensorId}`,
+                        data: [],
+                        borderColor: `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 1)`,
+                        borderWidth: 2,
+                        fill: false
+                    };
+                    overviewChart.data.datasets.push(dataset);
+                }
+    
+                dataset.data.push({ x: now, y: avgValue });
+                overviewChart.data.labels.push(now);
+            }
+    
+            overviewChart.update();
+        });
+
+        // socket.on('chart_data_range', function (data) {
+        //     if (data.sensor_type === parseInt(sensorType)) {
+        //         const timeData = data.data.map(item => new Date(item.time));
+        //         const valueData = data.data.map(item => item.value);
+
+        //         sensorChart.data.labels = timeData;
+        //         sensorChart.data.datasets[0].data = valueData;
+        //         sensorChart.update();
+        //     }
+        // });
+
+        socket.on('chart_data_range', function (data) {
+            if (data.sensor_type === sensorType) {
+                const timeData = data.data.map(item => new Date(item.time));
+                const valueData = data.data.map(item => item.value);
+
+                sensorChart.data.labels = timeData;
+                sensorChart.data.datasets[0].data = valueData;
+                sensorChart.update();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const modeInputs = document.getElementsByName('mode');
+            const customRangeDiv = document.getElementById('custom-range');
+            const startTimeInput = document.getElementById('start-time');
+            const endTimeInput = document.getElementById('end-time');
+            const applyRangeButton = document.getElementById('apply-range');
+
+            modeInputs.forEach(input => {
+                input.addEventListener('change', () => {
+                    if (input.value === 'custom_range') {
+                        customRangeDiv.style.display = 'block';
+                    } else {
+                        customRangeDiv.style.display = 'none';
+                        socket.emit('request_chart_data', sensorType); // Вернуться в режим за минуту
+                    }
+                });
+            });
+
+            applyRangeButton.addEventListener('click', () => {
+                const startTime = startTimeInput.value;
+                const endTime = endTimeInput.value;
+
+                if (!startTime || !endTime) {
+                    alert('Пожалуйста, выберите оба времени.');
+                    return;
+                }
+
+                socket.emit('request_chart_data_range', {
+                    sensor_type: sensorType,
+                    start_time: startTime,
+                    end_time: endTime
+                });
+            });
+        });
+        
+    </script>
+    
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!-- index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Главная страница</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.2/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Показания датчиков</h1>
+    <ul id="sensor_data">
+        {% if data_average %}
+            {% for sensor_type, avg_value in data_average.items() %}
+                <li>
+                    <a href="{{ url_for('sensor_chart', sensor_type=sensor_type) }}">
+                        Датчик {{ sensor_type }} - Среднее значение: {{ avg_value }}
+                    </a>
+                </li>
+            {% endfor %}
+        {% else %}
+            <li>Нет доступных данных</li>
+        {% endif %}
+    </ul>
+    <a href="{{ url_for('overview_chart') }}">Общий график</a>
+
+    <script>
+        const socket = io.connect();
+
+        socket.on('update_data', function (data) {
+            let sensorDataElem = document.getElementById('sensor_data');
+            sensorDataElem.innerHTML = '';
+            if (data.averages) {
+                for (const [sensorType, avgValue] of Object.entries(data.averages)) {
+                    const listItem = document.createElement('li');
+                    listItem.innerHTML = `<a href="/sensor/${sensorType}">Датчик ${sensorType} - Среднее значение: ${avgValue}</a>`;
+                    sensorDataElem.appendChild(listItem);
+                }
+            } else {
+                sensorDataElem.innerHTML = '<li>Нет доступных данных</li>';
+            }
+        });
+    </script>
+</body>
+</html>
